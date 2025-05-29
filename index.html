@@ -360,6 +360,12 @@
       let blackTime = 300;
       let timerInterval = null;
       let gameOver = false;
+      
+      // Track piece movements for castling
+      let pieceMoved = {
+        white: { king: false, rookLeft: false, rookRight: false },
+        black: { king: false, rookLeft: false, rookRight: false }
+      };
 
       // Initialize the game
       function initializeGame() {
@@ -570,7 +576,56 @@
 
       // King move validation
       function isValidKingMove(fromRow, fromCol, toRow, toCol) {
-        return Math.abs(toRow - fromRow) <= 1 && Math.abs(toCol - fromCol) <= 1;
+        // Normal king move
+        if (Math.abs(toRow - fromRow) <= 1 && Math.abs(toCol - fromCol) <= 1) {
+          return true;
+        }
+
+        // Castling
+        if (fromRow === toRow && Math.abs(toCol - fromCol) === 2) {
+          const isWhite = currentPlayer === "white";
+          const kingRow = isWhite ? 7 : 0;
+          
+          // King must be on its original square
+          if (fromRow !== kingRow || fromCol !== 4) return false;
+          
+          // King must not have moved
+          if (pieceMoved[currentPlayer].king) return false;
+          
+          // Check if it's kingside or queenside castling
+          const isKingside = toCol > fromCol;
+          
+          // Check if the rook has moved
+          if (isKingside && pieceMoved[currentPlayer].rookRight) return false;
+          if (!isKingside && pieceMoved[currentPlayer].rookLeft) return false;
+          
+          // Check if the path is clear
+          const rookCol = isKingside ? 7 : 0;
+          const pathStart = isKingside ? fromCol + 1 : fromCol - 1;
+          const pathEnd = isKingside ? rookCol - 1 : rookCol + 1;
+          
+          // Check if squares between king and rook are empty
+          for (let col = pathStart; col !== pathEnd; col += (isKingside ? 1 : -1)) {
+            if (board[fromRow][col]) return false;
+          }
+          
+          // Check if king is in check or would pass through check
+          if (isKingInCheck(currentPlayer)) return false;
+          
+          // Check if intermediate squares are under attack
+          const intermediateCol = fromCol + (isKingside ? 1 : -1);
+          const tempBoard = board.map(row => [...row]);
+          board[fromRow][intermediateCol] = board[fromRow][fromCol];
+          board[fromRow][fromCol] = null;
+          const wouldBeInCheck = isKingInCheck(currentPlayer);
+          board = tempBoard;
+          
+          if (wouldBeInCheck) return false;
+          
+          return true;
+        }
+        
+        return false;
       }
 
       // Check if diagonal path is clear
@@ -615,6 +670,24 @@
         // Make the move
         board[toRow][toCol] = piece;
         board[fromRow][fromCol] = null;
+
+        // Handle castling
+        if (piece.toLowerCase() === 'k' && Math.abs(toCol - fromCol) === 2) {
+          const isKingside = toCol > fromCol;
+          const rookFromCol = isKingside ? 7 : 0;
+          const rookToCol = isKingside ? toCol - 1 : toCol + 1;
+          const rook = board[fromRow][rookFromCol];
+          board[fromRow][rookToCol] = rook;
+          board[fromRow][rookFromCol] = null;
+        }
+
+        // Update piece movement tracking
+        if (piece.toLowerCase() === 'k') {
+          pieceMoved[currentPlayer].king = true;
+        } else if (piece.toLowerCase() === 'r') {
+          if (fromCol === 0) pieceMoved[currentPlayer].rookLeft = true;
+          if (fromCol === 7) pieceMoved[currentPlayer].rookRight = true;
+        }
 
         // Check if the move leaves the king in check
         if (isKingInCheck(currentPlayer)) {
@@ -882,17 +955,22 @@
 
       // Reset the game
       function resetGame() {
-        gameOver = false;
+        board = INITIAL_BOARD.map((row) => [...row]);
         currentPlayer = "white";
         selectedSquare = null;
         moveHistory = [];
         lastMove = null;
         whiteTime = 300;
         blackTime = 300;
-
-        document.getElementById("checkStatus").textContent = "";
-        document.getElementById("gameOverModal").classList.remove("show");
-
+        gameOver = false;
+        
+        // Reset piece movement tracking
+        pieceMoved = {
+          white: { king: false, rookLeft: false, rookRight: false },
+          black: { king: false, rookLeft: false, rookRight: false }
+        };
+        
+        clearInterval(timerInterval);
         initializeGame();
       }
 
